@@ -138,7 +138,7 @@ const Progressions = (() => {
 
     // Classical & lessons
     { id: 'cadence', group: 'Classical & lessons', name: 'Cadence drill: I–IV–I–V7–I',
-      about: 'The classic piano-lesson exercise. Play it in every key to learn the hand movements behind most music.',
+      about: 'The classic piano-lesson exercise, played in every key. On piano it uses inversions so the hand barely moves: I – IV⁶₄ – I – V⁶₅ – I (in C: C-E-G, C-F-A, C-E-G, B-F-G, C-E-G).',
       text: 'I | IV | I | V7 | I',
       level: 0, song: { title: 'Examples', search: 'I IV I V7 I cadence piano lesson' },
       keys: { guitar: 'G', ukulele: 'C', piano: 'C' } },

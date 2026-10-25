@@ -47,6 +47,7 @@ const PlayAlong = (() => {
     customProgs: [],
     playMode: 'wait', tempo: 70, beats: 4, click: true, loop: true,
     showNotes: true,
+    smoothFor: {},             // progression id -> voice chords as the nearest inversion to the last one
     oneMinuteBest: {},
   };
   let changes = {};            // "fromKey>toKey" -> { results: [{ ok, t, at }] }
@@ -128,16 +129,15 @@ const PlayAlong = (() => {
     return 'Not quite — ' + parts.join('; ');
   }
 
-  function renderStaff(box, chord, width) {
+  function renderStaff(box, notes, width) {
     box.innerHTML = '';
-    if (!window.Vex || !chord) return;
+    if (!window.Vex || !notes) return;
     const { Renderer, Stave, StaveNote, Accidental, Formatter } = Vex.Flow;
     const r = new Renderer(box, Renderer.Backends.SVG);
     r.resize(width, 150);
     const ctx = r.getContext();
     const stave = new Stave(6, 20, width - 12).addClef('treble');
     stave.setContext(ctx).draw();
-    const notes = voicing(chord);
     const VF = { '-2': 'bb', '-1': 'b', '1': '#', '2': '##' };
     const note = new StaveNote({
       keys: notes.map(n => `${Theory.LETTERS[n.letter].toLowerCase()}/${Math.floor((n.midi - n.acc) / 12) - 1}`),
@@ -203,6 +203,7 @@ const PlayAlong = (() => {
     describeProgression(p, $('prog-about'), $('prog-song'));
     $('prog-key').value = settings.progKeys[p.id] ?? p.key;
     $('prog-delete').hidden = !p.custom;
+    $('play-smooth').checked = isSmooth();
     parseEditor();
   }
 
@@ -434,16 +435,117 @@ const PlayAlong = (() => {
     if (beat < 0) box.append(el('span', 'count-in', `Count-in: ${settings.beats + beat + 1}`));
   }
 
+
+  // ---------- Smooth voice leading ----------
+  //
+  // Pianists move between chords with as little hand movement as possible: keep the notes two
+  // chords share and move the others to the nearest chord note. That's why a cadence is taught as
+  // I – IV⁶₄ – I – V⁶₅ – I (in C: C-E-G, C-F-A, C-E-G, B-F-G, C-E-G) rather than in root position.
+  // Each chord here is voiced as the nearest inversion to the one before, starting in root
+  // position; 7th chords may leave out the 5th, as teachers usually do. Slash chords keep their
+  // bass note lowest.
+
+  const INVERSIONS = ['root position', '1st inversion', '2nd inversion', '3rd inversion'];
+
+  // On by default for the cadence drill, which is always taught this way; others start in root position.
+  const isSmooth = () => settings.smoothFor[current().id] ?? current().id === 'preset:cadence';
+
+  function spellPc(chord, pc) {
+    const tone = chord.tones.find(t => t.pc === pc) ?? Theory.parseNote(chord.symbol.split('/')[1] || '') ?? Theory.rootByPc(pc);
+    return { letter: tone.letter, acc: tone.acc, pc, name: tone.name };
+  }
+
+  // Close voicings of a chord: every inversion, with and without an optional 5th, in a range around middle C.
+  function closeVoicings(chord) {
+    const sets = [chord.pcs];
+    if (chord.optional.length && chord.pcs.length >= 4) sets.push(chord.pcs.filter(pc => !chord.optional.includes(pc)));
+    const out = [];
+    for (const pcs of sets) {
+      for (const lowestPc of pcs) {
+        if (chord.bass !== null && lowestPc !== chord.bass) continue;
+        for (let low = 53; low <= 71; low++) {
+          if (low % 12 !== lowestPc) continue;
+          const notes = [low];
+          // Stack the other chord notes upwards in order, each at its next position above.
+          const order = [...pcs.slice(pcs.indexOf(lowestPc) + 1), ...pcs.slice(0, pcs.indexOf(lowestPc))];
+          for (const pc of order) {
+            let n = notes.at(-1) + 1;
+            while (n % 12 !== pc) n++;
+            notes.push(n);
+          }
+          out.push(notes);
+        }
+      }
+    }
+    return out;
+  }
+
+  const meanOf = xs => xs.reduce((a, b) => a + b, 0) / xs.length;
+
+  // How far the hand moves: each new note's distance to the nearest old one, a cost for changing the
+  // number of notes, and a gentle pull back towards middle C so the hand doesn't drift.
+  function moveCost(prev, next) {
+    const moves = next.reduce((sum, n) => sum + Math.min(...prev.map(p => Math.abs(p - n))), 0);
+    return moves + 2 * Math.abs(prev.length - next.length) + 0.2 * Math.abs(meanOf(next) - 64);
+  }
+
+  function voiceSteps(chords) {
+    const out = [];
+    for (const chord of chords) {
+      const options = closeVoicings(chord);
+      let notes;
+      if (!isSmooth() || !out.length || !options.length) {
+        notes = voicing(chord).map(n => n.midi);  // root position (or as written, for slash chords)
+      } else {
+        const prev = out.at(-1).map(n => n.midi);
+        notes = options.reduce((best, o) => (moveCost(prev, o) < moveCost(prev, best) ? o : best));
+      }
+      out.push(notes.map(midi => ({ midi, ...spellPc(chord, midi % 12) })));
+    }
+    return out;
+  }
+
+  // The progression as steps (repeated chords merged) with a voicing for each.
+  let stepCache = { key: null };
+  function stepPlan() {
+    const events = play ? play.events : (parsed?.bars.length ? Progressions.events(parsed.bars, settings.beats) : []);
+    if (!events.length) return null;
+    const steps = [];
+    const stepOf = events.map(e => { if (e.change) steps.push(e.chord); return steps.length - 1; });
+    const key = steps.map(c => c.key).join(',') + '|' + isSmooth();
+    if (stepCache.key !== key) stepCache = { key, voicings: voiceSteps(steps) };
+    return { steps, stepOf, voicings: stepCache.voicings };
+  }
+
+  function currentStepIndex(plan) {
+    if (!play) return 0;
+    if (play.mode === 'wait') return plan.stepOf[play.events.indexOf(play.steps[play.index])] ?? 0;
+    return play.target >= 0 ? plan.stepOf[play.target] : 0;
+  }
+
+  function inversionName(chord, notes) {
+    const i = chord.pcs.indexOf(notes[0].pc);
+    return i > 0 && chord.bass === null ? INVERSIONS[i] : '';
+  }
+
   // ---------- Rendering ----------
 
   function render() {
-    const now = target() ?? parsed?.bars[0]?.[0] ?? null;
-    const next = nextChord();
+    const plan = stepPlan();
+    let now = null, next = null, nowNotes = null, nextNotes = null;
+    if (plan) {
+      const s = currentStepIndex(plan);
+      const n = s + 1 < plan.steps.length ? s + 1 : (settings.loop || play?.oneMinute) && plan.steps.length > 1 ? 0 : -1;
+      now = plan.steps[s];
+      nowNotes = plan.voicings[s];
+      if (n >= 0 && plan.steps[n].key !== now.key) { next = plan.steps[n]; nextNotes = plan.voicings[n]; }
+    }
     $('now-name').textContent = now ? now.symbol : '—';
-    $('now-notes').textContent = now && settings.showNotes ? voicing(now).map(n => n.name).join(' – ') : '';
-    renderStaff($('now-staff'), now, 200);
+    const inv = now ? inversionName(now, nowNotes) : '';
+    $('now-notes').textContent = now && settings.showNotes ? nowNotes.map(n => n.name).join(' – ') + (inv ? ` (${inv})` : '') : '';
+    renderStaff($('now-staff'), nowNotes, 200);
     $('next-name').textContent = next ? next.symbol : '—';
-    renderStaff($('next-staff'), next, 150);
+    renderStaff($('next-staff'), nextNotes, 150);
     document.querySelectorAll('.bar').forEach(b => b.classList.remove('current'));
     if (play) {
       const ev = play.mode === 'wait' ? play.steps[play.index] : play.events[play.target];
@@ -584,8 +686,9 @@ const PlayAlong = (() => {
     $('beats').addEventListener('change', e => { settings.beats = Number(e.target.value); save(); });
     for (const id of ['click', 'loop']) {
       $(id).checked = settings[id];
-      $(id).addEventListener('change', e => { settings[id] = e.target.checked; save(); });
+      $(id).addEventListener('change', e => { settings[id] = e.target.checked; save(); render(); });
     }
+    $('play-smooth').addEventListener('change', e => { settings.smoothFor[current().id] = e.target.checked; save(); render(); });
     $('play-start').addEventListener('click', e => { play ? stop() : start(); e.currentTarget.blur(); });
     $('play-notes').addEventListener('click', e => { toggleNotes(); e.currentTarget.blur(); });
     $('omc-start').addEventListener('click', () => {
@@ -610,8 +713,8 @@ const PlayAlong = (() => {
     evaluate,
     // Keys to light on the piano: the current chord's notes, when notes are on.
     hintNotes() {
-      const chord = settings.mode === 'play' && settings.showNotes ? target() ?? parsed?.bars[0]?.[0] : null;
-      return new Set(chord ? voicing(chord).map(n => n.midi) : []);
+      const plan = settings.mode === 'play' && settings.showNotes ? stepPlan() : null;
+      return new Set(plan ? plan.voicings[currentStepIndex(plan)].map(n => n.midi) : []);
     },
     // Space starts/stops; Enter toggles the notes. Returns true if the key was used.
     key(e) {
