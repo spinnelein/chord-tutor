@@ -9,16 +9,36 @@
 // (hintNotes). Chords here come from theory.js; any inversion counts unless a slash chord names
 // the bass note.
 
+// The line under the progression menu: difficulty, description, and a link to hear a famous song
+// that uses it (a YouTube search, so the link can't go stale).
+const LEVEL_NAMES = ['Beginner', 'Intermediate', 'Advanced'];
+function describeProgression(p, aboutEl, linkEl) {
+  aboutEl.textContent = (p.level !== undefined ? LEVEL_NAMES[p.level] + ' · ' : '') + p.about;
+  linkEl.hidden = !p.song;
+  if (!p.song) return;
+  const query = p.song.search ?? `${p.song.title} ${p.song.artist}`;
+  linkEl.href = 'https://www.youtube.com/results?search_query=' + encodeURIComponent(query);
+  linkEl.textContent = p.song.search ? `▶ Find songs that use it on YouTube` : `▶ Hear it: "${p.song.title}" — ${p.song.artist}`;
+  if (p.id === 'preset:cadence') linkEl.textContent = '▶ Watch a lesson on YouTube';
+}
+
+// The progression menu, with presets under their style headings and saved ones last.
+function fillProgressionMenu(sel, items) {
+  sel.innerHTML = '';
+  for (const group of [...Progressions.GROUPS, 'Your progressions']) {
+    const inGroup = items.filter(p => (p.custom ? 'Your progressions' : p.group) === group);
+    if (!inGroup.length) continue;
+    const og = document.createElement('optgroup');
+    og.label = group;
+    for (const p of inGroup) og.append(new Option(p.name, p.id));
+    sel.append(og);
+  }
+}
+
 const PlayAlong = (() => {
   const NOT_QUITE_DELAY_MS = 250;
   const FEEDBACK_HOLD_MS = 2500;
   const KEEP = 20;
-
-  // Piano-friendly default keys for the presets.
-  const PIANO_KEYS = {
-    blues12: 'C', blues12quick: 'F', blues12basic: 'C', pop: 'C', fifties: 'C',
-    sad: 'C', folk: 'C', canon: 'D', andalusian: 'Am', jazz: 'C',
-  };
 
   const settings = {
     mode: 'drill',             // which tab is showing: 'drill' (the chord trainer) or 'play'
@@ -158,16 +178,15 @@ const PlayAlong = (() => {
 
   function list() {
     return [
-      ...Progressions.PRESETS.map(p => ({ id: 'preset:' + p.id, name: p.name, text: p.text, about: p.about, key: PIANO_KEYS[p.id] ?? 'C' })),
-      ...settings.customProgs.map(p => ({ id: 'custom:' + p.id, name: '★ ' + p.name, text: p.text, about: 'Your progression.', key: 'C', custom: true })),
+      ...Progressions.PRESETS.map(p => ({ id: 'preset:' + p.id, group: p.group, name: p.name, text: p.text, about: p.about, level: p.level, song: p.song, key: p.keys.piano ?? 'C' })),
+      ...settings.customProgs.map(p => ({ id: 'custom:' + p.id, name: p.name, text: p.text, about: 'Your progression.', key: 'C', custom: true })),
     ];
   }
   const current = () => list().find(p => p.id === settings.prog) ?? list()[0];
 
   function renderSelect() {
     const sel = $('prog-select');
-    sel.innerHTML = '';
-    for (const p of list()) sel.append(new Option(p.name, p.id));
+    fillProgressionMenu(sel, list());
     sel.value = current().id;
     const keySel = $('prog-key');
     keySel.innerHTML = '';
@@ -181,7 +200,7 @@ const PlayAlong = (() => {
   function loadEditor() {
     const p = current();
     $('prog-text').value = settings.progText[p.id] ?? p.text;
-    $('prog-about').textContent = p.about;
+    describeProgression(p, $('prog-about'), $('prog-song'));
     $('prog-key').value = settings.progKeys[p.id] ?? p.key;
     $('prog-delete').hidden = !p.custom;
     parseEditor();
@@ -536,7 +555,7 @@ const PlayAlong = (() => {
       });
     }
     $('prog-save').addEventListener('click', () => {
-      const name = prompt('Name for this progression:', current().custom ? current().name.replace('★ ', '') : 'My progression');
+      const name = prompt('Name for this progression:', current().custom ? current().name : 'My progression');
       if (!name) return;
       // Saved with chord names in the current key, so it plays the same wherever it's opened.
       const text = parsed.bars.map(b => b.map(c => c.symbol.replace(/♯/g, '#').replace(/♭/g, 'b')).join(' ')).join(' | ');
@@ -548,7 +567,7 @@ const PlayAlong = (() => {
     });
     $('prog-delete').addEventListener('click', () => {
       const p = current();
-      if (!p.custom || !confirm(`Delete "${p.name.replace('★ ', '')}"?`)) return;
+      if (!p.custom || !confirm(`Delete "${p.name}"?`)) return;
       settings.customProgs = settings.customProgs.filter(c => 'custom:' + c.id !== p.id);
       settings.prog = 'preset:blues12';
       save();

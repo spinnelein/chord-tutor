@@ -136,11 +136,29 @@ const Theory = (() => {
   const NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII'];
   const MAJOR_STEPS = [0, 2, 4, 5, 7, 9, 11];
 
-  // key: { root (root object), minor (bool) }. "IV7", "vi", "bVII", "ii7" ("V/V" isn't supported).
+  // A scale degree like "VII", "bVI" or "iii" in a key: { degree (0-6), pc, upper (case) }.
+  function parseDegree(text, key) {
+    const m = /^([b♭#♯]?)(VII|VI|IV|V|III|II|I|vii|vi|iv|v|iii|ii|i)$/.exec(text);
+    if (!m) return null;
+    const degree = NUMERALS.indexOf(m[2].toUpperCase());
+    const shift = m[1] === 'b' || m[1] === '♭' ? -1 : m[1] ? 1 : 0;
+    return { degree, pc: (key.root.pc + MAJOR_STEPS[degree] + shift + 12) % 12 };
+  }
+
+  // key: { root (root object), minor (bool) }. "IV7", "vi", "bVII", "ii7", and slash chords whose
+  // bass is a scale degree: "V/VII" in C is G/B. (Secondary dominants like "V/V" aren't supported.)
   // Numerals count from the major scale even in minor keys, as usually written: in A minor,
   // i–bVII–bVI–V is Am–G–F–E.
   function parseRoman(text, key) {
-    const m = /^([b♭#♯]?)(VII|VI|IV|V|III|II|I|vii|vi|iv|v|iii|ii|i)(.*)$/.exec(text.trim());
+    text = text.trim();
+    const slash = text.lastIndexOf('/');
+    if (slash > 0) {
+      const chord = parseRoman(text.slice(0, slash), key);
+      const bass = parseDegree(text.slice(slash + 1).toUpperCase().replace(/^B(?=[IV])/, 'b'), key);
+      if (!chord || !bass) return null;
+      return bass.pc === chord.root.pc ? chord : buildChord(chord.root, chord.type, spellInKey(bass.pc, bass.degree, key));
+    }
+    const m = /^([b♭#♯]?)(VII|VI|IV|V|III|II|I|vii|vi|iv|v|iii|ii|i)(.*)$/.exec(text);
     if (!m) return null;
     const degree = NUMERALS.indexOf(m[2].toUpperCase());
     const upper = m[2] === m[2].toUpperCase();
