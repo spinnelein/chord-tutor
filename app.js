@@ -330,7 +330,8 @@ function succeed() {
   const secs = (performance.now() - state.shownAt) / 1000;
   Progress.record(state.chord, { ok: true, time: secs, hint: state.hintShown });
   renderProgress();
-  setFeedback(`Correct${state.hintShown ? ' (with hint) —' : '!'} ${secs.toFixed(1)}s`, 'good');
+  const timeText = secs > 30 ? "(time not counted — you'd been away a while)" : `${secs.toFixed(1)}s`;
+  setFeedback(`Correct${state.hintShown ? ' (with hint) —' : '!'} ${timeText}`, 'good');
   state.celebrating = true;
   resetAttempt();
   $('chord-name').classList.add('good');
@@ -641,7 +642,7 @@ async function selectInput() {
   if (mic) {
     try {
       await MicInput.start({ onChange: setHeldFromMic, onFrame: drawMic, onState: renderInputStatus });
-      if (!state.settings.micCalibrated) startCalibration();
+      if (!state.settings.micCalibrated || !state.settings.micNoise) startCalibration();
     } catch (err) {
       micError = err.name === 'NotAllowedError' ? 'Mic: permission denied' : 'Mic: not available';
     }
@@ -698,6 +699,7 @@ function buildMicPanel() {
       saveSettings();
     });
   }
+  MicInput.settings.noiseProfile = settings.micNoise ?? null; // the room measured last time
   $('mic-show').addEventListener('change', e => { $('mic-canvas').hidden = !e.target.checked; });
   $('mic-calibrate').addEventListener('click', e => { if (MicInput.isRunning()) startCalibration(); e.currentTarget.blur(); });
 }
@@ -712,7 +714,7 @@ const CALIBRATE_MS = 2000;
 let calibration = null;
 
 function startCalibration() {
-  calibration = { samples: [], until: performance.now() + CALIBRATE_MS, gate: MicInput.settings.gateDb };
+  calibration = { samples: [], spectra: [], until: performance.now() + CALIBRATE_MS, gate: MicInput.settings.gateDb };
   MicInput.settings.gateDb = 0; // hear nothing as notes while measuring
   setHeldFromMic([]);
   $('mic-calibrate').disabled = true;
@@ -722,8 +724,10 @@ function startCalibration() {
 function calibrationFrame(frame) {
   if (!calibration) return;
   if (Number.isFinite(frame.maxDb)) calibration.samples.push(frame.maxDb);
+  if (frame.spectrumDb) calibration.spectra.push(frame.spectrumDb.slice());
   if (performance.now() < calibration.until) return;
   const samples = calibration.samples.sort((a, b) => a - b);
+  const calibration_spectra = calibration.spectra;
   calibration = null;
   $('mic-calibrate').disabled = false;
   if (samples.length < 10) {
@@ -736,6 +740,11 @@ function calibrationFrame(frame) {
   const slider = $('mic-gate');
   slider.value = gate;
   slider.dispatchEvent(new Event('input')); // updates the label, the mic and the saved setting
+  // The room's noise at each pitch: notes are judged against the noise at their own pitch, so low
+  // hum doesn't hide quiet high notes.
+  const profile = { ...MicInput.noiseProfile(calibration_spectra, frame.binHz), gate };
+  MicInput.settings.noiseProfile = profile;
+  state.settings.micNoise = profile;
   state.settings.micCalibrated = true;
   saveSettings();
   $('mic-calib-status').textContent = gate >= -40
@@ -1202,6 +1211,11 @@ $('input-select').addEventListener('change', () => {
   state.settings.input = inputChoice();
   saveSettings();
   selectInput();
+});
+
+// Time spent in another tab or app doesn't count: restart the chord's clock on return.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') state.shownAt = performance.now();
 });
 
 loadSettings();

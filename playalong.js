@@ -702,6 +702,10 @@ const PlayAlong = (() => {
   // hooks: { held(), clearClicked(), renderPiano(), modeChanged(mode) }
   function init(hooks) {
     app = hooks;
+    // Time away in another tab or app doesn't count towards a chord change.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && play && play.mode === 'wait') play.lastAt = performance.now();
+    });
     load();
     wire();
     renderSelect();

@@ -15,7 +15,7 @@ const Progress = (() => {
   const STORAGE_KEY = 'chordTutorProgress';
   const KEEP = 20;          // attempts stored per chord
   const WINDOW = 10;        // attempts used to judge a chord
-  const MAX_TIME = 30;      // seconds; longer times (walked away?) are capped
+  const MAX_TIME = 30;      // seconds; longer times (walked away?) aren't counted as a time
   const WORKING_SET = 5;    // chords being learned before new ones are held back
   const LEVELS = ['New', 'Learning', 'Getting there', 'Good', 'Mastered'];
 
@@ -40,7 +40,8 @@ const Progress = (() => {
     const entry = data.chords[key] ??= { results: [] };
     entry.results.push({
       ok: !!result.ok,
-      t: result.ok ? Math.round(Math.min(result.time, MAX_TIME) * 100) / 100 : null,
+      // Over MAX_TIME the player was probably away: the chord counts as played, but not as a time.
+      t: result.ok && result.time <= MAX_TIME ? Math.round(result.time * 100) / 100 : null,
       hint: !!result.hint,
       skip: !!result.skip,
       at: Date.now(),
@@ -62,7 +63,7 @@ const Progress = (() => {
     const tries = recent.length;
     const correct = recent.filter(r => r.ok).length;
     const acc = tries ? correct / tries : 0;
-    const time = median(recent.filter(r => r.ok && !r.hint).map(r => r.t));
+    const time = median(recent.filter(r => r.ok && !r.hint && r.t !== null).map(r => r.t));
     let level = 0;
     if (tries) {
       if (tries >= 5 && acc >= 0.9 && time !== null && time <= goal) level = 4;
@@ -119,7 +120,7 @@ const Progress = (() => {
   function overview() {
     const all = Object.values(data.chords).flatMap(e => e.results).sort((a, b) => a.at - b.at);
     const block = rs => {
-      const clean = rs.filter(r => r.ok && !r.hint).map(r => r.t);
+      const clean = rs.filter(r => r.ok && !r.hint && r.t !== null).map(r => r.t);
       return rs.length ? { acc: rs.filter(r => r.ok).length / rs.length, time: median(clean), n: rs.length } : null;
     };
     return { total: all.length, last: block(all.slice(-20)), before: block(all.slice(-40, -20)) };
@@ -128,7 +129,7 @@ const Progress = (() => {
   // Everything attempted since `start` (a Date.now() timestamp), per chord and overall.
   // `before` is the chord's median time from its attempts before the session, for comparison.
   function sessionReport(start) {
-    const cleanTime = rs => median(rs.filter(r => r.ok && !r.hint).map(r => r.t));
+    const cleanTime = rs => median(rs.filter(r => r.ok && !r.hint && r.t !== null).map(r => r.t));
     const chords = [];
     for (const [key, e] of Object.entries(data.chords)) {
       const during = e.results.filter(r => r.at >= start);
