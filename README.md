@@ -23,6 +23,10 @@ own browser.
   few at a time, and mastered chords come back for occasional review.
 - **Progress grid** showing your level and median time for every chord.
 - **Timed sessions** (5–20 minutes) with a report comparing you with your last session.
+- **Play along** with chord progressions: 12-bar blues, pop I–V–vi–IV, 50s, canon, ii–V–I and more,
+  in any key, or type your own (`| C | F G | Am |` or `I IV V7`) and save it. *Wait for me* moves on
+  when you play each chord and times every change; *Keep the beat* changes chords in time with an
+  optional click. Includes a *one-minute changes* drill and a list of your slowest chord changes.
 - **Helpful feedback.** If you play the wrong chord, it tells you which chord you played.
 
 ## Using it
@@ -50,6 +54,8 @@ version remembers it.
 | `app.js` | Chord theory, chord checking, MIDI, prompts, settings and progress view |
 | `audio.js` | Microphone note detection |
 | `progress.js` | Practice history, chord levels, the smart chord order and session reports |
+| `playalong.js` | The Play along tab: progressions, timing chord changes, one-minute changes |
+| `theory.js`, `progressions.js` | Chord symbols, roman numerals and the preset progressions (shared with Fret Tutor) |
 | `lib/vexflow.js` | [VexFlow](https://www.vexflow.com) 4.2.2 for drawing the staff (MIT license) |
 
 ## License

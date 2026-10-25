@@ -209,6 +209,7 @@ function nextChord() {
 }
 
 function evaluate() {
+  if (PlayAlong.active()) return PlayAlong.evaluate();
   const chord = state.chord;
   if (!chord || state.celebrating) return;
 
@@ -466,6 +467,7 @@ function buildPiano() {
 }
 
 function hintNotes() {
+  if (PlayAlong.active()) return PlayAlong.hintNotes();
   const c = state.chord;
   if (!c || !state.settings.showNotes) return new Set();
   return new Set(voicing(c).map(n => n.midi));
@@ -516,7 +518,7 @@ function renderPiano() {
   const success = state.celebrating;
   const hints = hintNotes();
   const heldKey = [...state.held].sort((a, b) => a - b).join(',');
-  const judging = chord && !success && !state.awaitRelease && heldKey === state.judgedKey;
+  const judging = chord && !success && !state.awaitRelease && heldKey === state.judgedKey && !PlayAlong.active();
 
   for (const [n, el] of keyEls) {
     const down = state.held.has(n);
@@ -662,13 +664,16 @@ function ensureMidi() {
 // Mic panel: level meter, tuning sliders, and an optional view of the spectrum with detected notes.
 function buildMicPanel() {
   const { settings } = state;
+  // Slider positions as words; the underlying dB values mean little to most people.
+  const level = input => ['very low', 'low', 'medium', 'high', 'very high'][
+    Math.min(4, Math.floor((input.value - input.min) / (input.max - input.min) * 5))];
   const sliders = [
-    ['mic-gate', 'micGate', 'gateDb', v => `${v} dB`],
-    ['mic-range', 'micRange', 'rangeDb', v => `${v} dB`],
+    ['mic-gate', 'micGate', 'gateDb', level],
+    ['mic-range', 'micRange', 'rangeDb', level],
   ];
   for (const [id, key, micKey, fmt] of sliders) {
     const input = $(id);
-    const show = () => { $(id + '-val').textContent = fmt(input.value); };
+    const show = () => { $(id + '-val').textContent = fmt(input); };
     input.value = settings[key] ?? MicInput.settings[micKey];
     MicInput.settings[micKey] = Number(input.value);
     show();
@@ -739,6 +744,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); closeReport(); }
     return;
   }
+  if (PlayAlong.key(e)) return;
   if (e.key === ' ') { e.preventDefault(); skip(); return; }
   if (e.key === 'Enter') { e.preventDefault(); toggleNotes(); return; }
   if (e.key.toLowerCase() === 'n') cycleNameStyle();
@@ -1149,4 +1155,17 @@ renderPrompt();
 buildPiano();
 nextChord();
 renderProgress();
+PlayAlong.init({
+  held: () => [...state.held].sort((a, b) => a - b),
+  clearClicked: () => {
+    for (const n of state.clicked) state.held.delete(n);
+    state.clicked.clear();
+  },
+  renderPiano,
+  modeChanged: mode => {
+    document.querySelectorAll('.play-only').forEach(n => { n.hidden = mode !== 'play'; });
+    if (mode === 'drill') { state.held.clear(); state.clicked.clear(); evaluate(); }
+    renderPiano();
+  },
+});
 refreshInputs(); // starts the saved input; MIDI permission is only requested if MIDI is chosen
