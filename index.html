@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chord Tutor</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Chord Tutor</h1>
+    <div class="midi">
+      <span id="midi-status" class="status off">MIDI: not connected</span>
+      <select id="input-select" title="Input: MIDI device or microphone"></select>
+    </div>
+  </header>
+
+  <main>
+    <section class="prompt">
+      <div class="session-bar">
+        <select id="session-length" title="Session length">
+          <option value="5">5 min</option>
+          <option value="10">10 min</option>
+          <option value="15">15 min</option>
+          <option value="20">20 min</option>
+        </select>
+        <button id="btn-session">Start session</button>
+        <span id="session-timer" class="session-timer"></span>
+      </div>
+      <div class="prompt-row">
+        <div>
+          <div id="chord-name" class="chord-name">—</div>
+          <div id="chord-inv" class="chord-inv"></div>
+          <div id="chord-badge" class="badge" hidden>New chord</div>
+        </div>
+        <div id="staff" class="staff" hidden></div>
+      </div>
+      <div id="chord-sub" class="chord-sub">Play the chord on your keyboard</div>
+      <div id="feedback" class="feedback"></div>
+      <div class="actions">
+        <button id="btn-hint" aria-pressed="false">Notes: off (Enter)</button>
+        <button id="btn-skip">Skip (Space)</button>
+        <button id="btn-names" title="Change how chord names are written (N)">Names</button>
+        <button id="btn-staff" aria-pressed="false">Staff: off</button>
+      </div>
+    </section>
+
+    <section class="piano-wrap">
+      <div id="piano" class="piano"></div>
+      <div id="held" class="held">Held: —</div>
+      <div id="mic-panel" class="mic-panel" hidden>
+        <div class="mic-row">
+          <span class="meter-label">Mic level</span>
+          <div class="meter"><div id="mic-level"></div></div>
+          <label title="Sounds quieter than this are ignored. Raise it if room noise triggers notes.">Noise gate
+            <input type="range" id="mic-gate" min="-100" max="-30" step="1"> <span id="mic-gate-val"></span></label>
+          <label title="How far below the loudest note a note can be and still count. Lower it if overtones show up as extra notes.">Sensitivity
+            <input type="range" id="mic-range" min="15" max="50" step="1"> <span id="mic-range-val"></span></label>
+          <label><input type="checkbox" id="mic-show"> Show what the mic hears</label>
+        </div>
+        <canvas id="mic-canvas" width="1150" height="170" hidden></canvas>
+      </div>
+    </section>
+
+    <section class="settings">
+      <fieldset>
+        <legend>Chord types</legend>
+        <div id="type-list" class="checks"></div>
+      </fieldset>
+      <fieldset>
+        <legend>Roots</legend>
+        <div id="root-list" class="checks"></div>
+        <div class="mini">
+          <button data-roots="naturals">Naturals</button>
+          <button data-roots="all">All</button>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Inversions</legend>
+        <label><input type="radio" name="inv-mode" value="any"> Accept any inversion</label>
+        <label><input type="radio" name="inv-mode" value="specific"> Ask for a specific inversion:</label>
+        <div id="inv-list" class="checks indent"></div>
+        <label><input type="checkbox" id="opt-slash"> Show inversions as slash chords (Fm/A♭)</label>
+      </fieldset>
+      <fieldset>
+        <legend>Practice</legend>
+        <label>Chord order
+          <select id="opt-order">
+            <option value="smart">Smart: focus on weak and slow chords</option>
+            <option value="random">Random</option>
+          </select></label>
+        <label>Goal time <input type="number" id="opt-goal" min="0.5" max="30" step="0.5"> seconds</label>
+        <p class="note">A chord is mastered when you get 9 of your last 10 tries right and your
+          median time is within the goal.</p>
+      </fieldset>
+    </section>
+
+    <section class="progress">
+      <div class="progress-head">
+        <h2>Progress</h2>
+        <button id="btn-reset-progress">Reset progress</button>
+      </div>
+      <p id="progress-summary" class="progress-summary"></p>
+      <div id="progress-grid" class="progress-grid"></div>
+      <div class="legend">
+        <span><i class="swatch lvl-0"></i>New</span>
+        <span><i class="swatch lvl-1"></i>Learning</span>
+        <span><i class="swatch lvl-2"></i>Getting there</span>
+        <span><i class="swatch lvl-3"></i>Good</span>
+        <span><i class="swatch lvl-4"></i>Mastered</span>
+        <span class="legend-note">Numbers are your median time over the last 10 tries (correct, no notes shown).
+          Goal: <span id="progress-goal"></span>s. Faded cells aren't in your current selection.</span>
+      </div>
+      <details class="progress-details">
+        <summary>Table view (weakest first)</summary>
+        <table id="progress-table">
+          <thead><tr><th>Chord</th><th>Level</th><th>Correct (last 10)</th><th>Median time</th><th>Last practiced</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <p id="progress-empty" class="note">Nothing practiced yet.</p>
+      </details>
+      <div id="progress-tip" class="progress-tip" role="tooltip" hidden></div>
+    </section>
+
+    <p class="tip">Shortcuts: <kbd>Space</kbd> skip · <kbd>Enter</kbd> show/hide notes · <kbd>N</kbd> change name style.
+      No instrument handy? Click the on-screen keys.</p>
+  </main>
+
+  <div id="report" class="modal" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="report-title">
+      <h2 id="report-title">Session complete</h2>
+      <div id="report-body"></div>
+      <div class="modal-actions"><button id="btn-report-close">Close</button></div>
+    </div>
+  </div>
+
+  <script src="lib/vexflow.js"></script>
+  <script src="audio.js"></script>
+  <script src="progress.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
