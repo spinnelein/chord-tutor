@@ -43,7 +43,9 @@ const MicInput = (() => {
     const maxDb = 20 * Math.log10(max || 1e-12);
     if (maxDb < opts.gateDb) return { notes: [], peaks: [], maxDb };
 
-    const floor = max * Math.pow(10, -opts.rangeDb / 20);
+    // A peak must be within rangeDb of the loudest one and also above the noise gate, so steady
+    // background noise (hum, fans) stays out even while you're playing.
+    const floor = Math.max(max * Math.pow(10, -opts.rangeDb / 20), Math.pow(10, opts.gateDb / 20));
     const db = k => 20 * Math.log10(mag[k] || 1e-12);
 
     // Local maxima above the floor, with parabolic interpolation for a precise frequency.
@@ -116,7 +118,7 @@ const MicInput = (() => {
       lastNotes = key;
       onChange(sounding);
     }
-    onFrame({ spectrumDb, binHz: ctx.sampleRate / FFT_SIZE, peaks: result.peaks, raw: result.notes, sounding, levelDb });
+    onFrame({ spectrumDb, binHz: ctx.sampleRate / FFT_SIZE, peaks: result.peaks, raw: result.notes, sounding, levelDb, maxDb: result.maxDb });
   }
 
   async function start(handlers) {

@@ -91,8 +91,9 @@ function voicing(chord) {
 
 // ---------- State ----------
 
-const PIANO_LOW = 36;  // C2
-const PIANO_HIGH = 96; // C7 (61 keys)
+// Keyboard range by screen width: 61 keys (C2–C7) on wide screens; fewer, bigger keys on tablets
+// (C3–C6) and phones (F3–C6). The chords the app lights up sit around middle C, so they always fit.
+const pianoRange = () => (innerWidth >= 900 ? [36, 96] : innerWidth >= 600 ? [48, 84] : [53, 84]);
 const HINT_BASE = 60;  // hints are drawn starting from the octave of middle C
 // A wrong chord must last this long to count as a miss. With MIDI this skips the instant while
 // keys of one chord are still landing; the mic needs longer so a stray detection doesn't count.
@@ -428,13 +429,19 @@ function renderHeld() {
 const isBlack = n => [1, 3, 6, 8, 10].includes(n % 12);
 const keyEls = new Map();
 
+let builtRange = '';
+
 function buildPiano() {
   const piano = $('piano');
+  const [low, high] = pianoRange();
+  builtRange = `${low}-${high}`;
+  piano.innerHTML = '';
+  keyEls.clear();
   const whites = [];
-  for (let n = PIANO_LOW; n <= PIANO_HIGH; n++) if (!isBlack(n)) whites.push(n);
+  for (let n = low; n <= high; n++) if (!isBlack(n)) whites.push(n);
   const w = 100 / whites.length;
 
-  for (let n = PIANO_LOW; n <= PIANO_HIGH; n++) {
+  for (let n = low; n <= high; n++) {
     const el = document.createElement('div');
     el.className = 'key ' + (isBlack(n) ? 'black' : 'white');
     if (isBlack(n)) {
@@ -465,6 +472,13 @@ function buildPiano() {
     keyEls.set(n, el);
   }
 }
+
+// Rebuild with a different range when the screen is resized or rotated.
+addEventListener('resize', () => {
+  if (pianoRange().join('-') === builtRange) return;
+  buildPiano();
+  renderPiano();
+});
 
 function hintNotes() {
   if (PlayAlong.active()) return PlayAlong.hintNotes();
@@ -627,6 +641,7 @@ async function selectInput() {
   if (mic) {
     try {
       await MicInput.start({ onChange: setHeldFromMic, onFrame: drawMic, onState: renderInputStatus });
+      if (!state.settings.micCalibrated) startCalibration();
     } catch (err) {
       micError = err.name === 'NotAllowedError' ? 'Mic: permission denied' : 'Mic: not available';
     }
@@ -684,11 +699,55 @@ function buildMicPanel() {
     });
   }
   $('mic-show').addEventListener('change', e => { $('mic-canvas').hidden = !e.target.checked; });
+  $('mic-calibrate').addEventListener('click', e => { if (MicInput.isRunning()) startCalibration(); e.currentTarget.blur(); });
 }
+
+// ---------- Measuring room noise ----------
+//
+// The first time the mic starts, listen for 2 seconds of quiet and set the background noise filter
+// just above the loudest room noise heard (90th percentile of each moment's loudest peak, plus a
+// 6 dB margin). Notes are ignored while measuring. "Measure room noise" runs it again.
+
+const CALIBRATE_MS = 2000;
+let calibration = null;
+
+function startCalibration() {
+  calibration = { samples: [], until: performance.now() + CALIBRATE_MS, gate: MicInput.settings.gateDb };
+  MicInput.settings.gateDb = 0; // hear nothing as notes while measuring
+  setHeldFromMic([]);
+  $('mic-calibrate').disabled = true;
+  $('mic-calib-status').textContent = 'Measuring background noise — please stay quiet for 2 seconds…';
+}
+
+function calibrationFrame(frame) {
+  if (!calibration) return;
+  if (Number.isFinite(frame.maxDb)) calibration.samples.push(frame.maxDb);
+  if (performance.now() < calibration.until) return;
+  const samples = calibration.samples.sort((a, b) => a - b);
+  calibration = null;
+  $('mic-calibrate').disabled = false;
+  if (samples.length < 10) {
+    MicInput.settings.gateDb = state.settings.micGate ?? -70;
+    $('mic-calib-status').textContent = "Couldn't measure the room — set the filter by hand or try again.";
+    return;
+  }
+  const noise = samples[Math.floor(samples.length * 0.9)];
+  const gate = Math.round(Math.min(-40, Math.max(-95, noise + 6)));
+  const slider = $('mic-gate');
+  slider.value = gate;
+  slider.dispatchEvent(new Event('input')); // updates the label, the mic and the saved setting
+  state.settings.micCalibrated = true;
+  saveSettings();
+  $('mic-calib-status').textContent = gate >= -40
+    ? 'Set automatically, but the room was loud. If your playing is missed, measure again in a quieter moment.'
+    : `Set automatically to ${$('mic-gate-val').textContent} for this room.`;
+}
+
 
 const noteLabel = n => PC_NAMES[n % 12] + (Math.floor(n / 12) - 1);
 
 function drawMic(frame) {
+  calibrationFrame(frame);
   const level = Math.min(100, Math.max(0, (frame.levelDb + 60) / 60 * 100));
   $('mic-level').style.width = level + '%';
 

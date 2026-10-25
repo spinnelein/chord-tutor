@@ -333,3 +333,13 @@ kbd {
   .settings { grid-template-columns: 1fr; }
   .chord-name { font-size: 64px; }
 }
+
+/* Phones: shorter keys to go with the narrower keyboard range. */
+@media (max-width: 600px) {
+  .piano, .key.white { height: 120px; }
+  .key.black { height: 75px; }
+}
+
+.calib-status { color: var(--hint) !important; }
+.calib-status:empty { display: none; }
+#mic-calibrate { align-self: flex-start; margin-top: 2px; }

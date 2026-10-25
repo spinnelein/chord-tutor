@@ -447,8 +447,9 @@ const PlayAlong = (() => {
 
   const INVERSIONS = ['root position', '1st inversion', '2nd inversion', '3rd inversion'];
 
-  // On by default for the cadence drill, which is always taught this way; others start in root position.
-  const isSmooth = () => settings.smoothFor[current().id] ?? current().id === 'preset:cadence';
+  // On by default for the cadence drills, which are always taught this way; others start in root position.
+  const CADENCES = ['preset:cadence', 'preset:cadenceV', 'preset:minorCadence', 'preset:minorCadenceV'];
+  const isSmooth = () => settings.smoothFor[current().id] ?? CADENCES.includes(current().id);
 
   function spellPc(chord, pc) {
     const tone = chord.tones.find(t => t.pc === pc) ?? Theory.parseNote(chord.symbol.split('/')[1] || '') ?? Theory.rootByPc(pc);
