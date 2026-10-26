@@ -571,15 +571,20 @@ function renderStaff() {
 }
 
 // The keys to light for the notes held. A phone shows fewer octaves than the mic hears, so notes
-// played out of view move by whole octaves into view, keeping their spacing. A chord too wide to
-// fit has each note folded in separately. The "Held" line still shows the real octaves.
-function shownNotes(notes) {
+// played out of view move by whole octaves into view, keeping their spacing, to where the hints
+// are (or would be: the octave from middle C up), so they line up with the yellow keys. A chord
+// too wide to fit has each note folded in separately. The "Held" line still shows the real octaves.
+function shownNotes(notes, hints) {
   if (!notes.length) return new Set();
   const [low, high] = builtRange.split('-').map(Number);
   const lo = Math.min(...notes), hi = Math.max(...notes);
   if (lo >= low && hi <= high) return new Set(notes);
   const up = Math.ceil((low - lo) / 12), down = Math.floor((high - hi) / 12);
-  if (up <= down) return new Set(notes.map(n => n + 12 * (up > 0 ? up : down)));
+  if (up <= down) {
+    const target = hints.size ? Math.min(...hints) : HINT_BASE + ((lo % 12) + 12) % 12;
+    const best = Math.round((target - lo) / 12);
+    return new Set(notes.map(n => n + 12 * Math.max(up, Math.min(down, best))));
+  }
   return new Set(notes.map(n => {
     while (n < low) n += 12;
     while (n > high) n -= 12;
@@ -593,7 +598,7 @@ function renderPiano() {
   const hints = hintNotes();
   const heldKey = [...state.held].sort((a, b) => a - b).join(',');
   const judging = chord && !success && !state.awaitRelease && heldKey === state.judgedKey && !PlayAlong.active();
-  const shown = shownNotes([...state.held]);
+  const shown = shownNotes([...state.held], hints);
 
   for (const [n, el] of keyEls) {
     const down = shown.has(n);
@@ -842,9 +847,14 @@ function drawMic(frame) {
     g.fillText(noteLabel(m), x(f) + 3, H - 4);
   }
 
-  // Noise gate.
-  g.fillStyle = 'rgba(255, 93, 93, .5)';
-  g.fillRect(0, y(MicInput.settings.gateDb), W, 1);
+  // Noise filter: a note's peak must rise above this line at its own pitch to count.
+  g.strokeStyle = 'rgba(255, 93, 93, .7)';
+  g.beginPath();
+  for (let px = 0; px <= W; px += 2) {
+    const py = y(MicInput.thresholdDb(LO * Math.pow(HI / LO, px / W)));
+    px ? g.lineTo(px, py) : g.moveTo(px, py);
+  }
+  g.stroke();
 
   // Spectrum.
   g.strokeStyle = '#6aa8ff';
