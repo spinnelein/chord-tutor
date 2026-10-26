@@ -89,6 +89,42 @@ function voicing(chord) {
   return notes;
 }
 
+// Right-hand fingering for a chord (MIDI notes, lowest first): thumb on the bottom, 5 on top, and
+// the fingers between chosen by the gaps, as the Alfred "Complete Book of Scales, Chords, Arpeggios
+// & Cadences" fingers its triads and cadences: 1-3-5 in root position and 2nd inversion; 1-2-5 when
+// the top gap is a 4th (1st inversion) or the bottom two are a step apart; 1-4-5 when the top two
+// are a step apart (sus4, the cadence V7 B-F-G). Four-note chords take 1-2-3-5, or 1-2-4-5 with a
+// step at the top. Returns [] for more notes than one hand plays.
+function rhFingering(midis) {
+  const n = midis.length;
+  if (n < 3) return n === 2 ? [1, 5] : [1];
+  const top = midis[n - 1] - midis[n - 2];
+  if (n === 3) {
+    const low = midis[1] - midis[0];
+    return [1, top <= 2 ? 4 : low <= 2 || (top >= 5 && top > low) ? 2 : 3, 5];
+  }
+  if (n === 4) return top <= 2 ? [1, 2, 4, 5] : [1, 2, 3, 5];
+  return n === 5 ? [1, 2, 3, 4, 5] : [];
+}
+
+// Note names for a voicing ({ midi, name } objects), each followed by its right-hand finger.
+function notesLabel(notes, fingering) {
+  const span = document.createElement('span');
+  const fingers = fingering ? rhFingering(notes.map(n => n.midi)) : [];
+  notes.forEach((n, i) => {
+    if (i) span.append(' – ');
+    span.append(n.name);
+    if (fingers[i]) {
+      const f = document.createElement('span');
+      f.className = 'finger';
+      f.title = 'Right-hand finger';
+      f.textContent = fingers[i];
+      span.append(f);
+    }
+  });
+  return span;
+}
+
 // ---------- State ----------
 
 // Keyboard range by screen width: 61 keys (C2–C7) on wide screens; fewer, bigger keys on tablets
@@ -125,6 +161,7 @@ const state = {
     nameStyle: 'abbr',
     input: 'mic',          // 'mic', 'midi:all' or 'midi:<device id>'
     slash: false,          // show inversions as slash chords, e.g. Fm/A♭
+    fingering: false,      // show right-hand fingering with the note names
     order: 'smart',        // 'smart' (focus on weak and slow chords) or 'random'
     goal: 3,               // seconds: a chord is mastered when you play it this fast
     sessionMinutes: 10,
@@ -415,9 +452,8 @@ function renderPrompt() {
   }
   if (state.settings.showNotes) {
     if (!conceal) sub.append(' — ');
-    const span = document.createElement('span');
+    const span = notesLabel(voicing(c), state.settings.fingering);
     span.className = 'notes';
-    span.textContent = voicing(c).map(n => n.name).join(' – ');
     sub.append(span);
   }
 }
@@ -528,15 +564,33 @@ function renderStaff() {
   Formatter.FormatAndDraw(ctx, stave, [note]);
 }
 
+// The keys to light for the notes held. A phone shows fewer octaves than the mic hears, so notes
+// played out of view move by whole octaves into view, keeping their spacing. A chord too wide to
+// fit has each note folded in separately. The "Held" line still shows the real octaves.
+function shownNotes(notes) {
+  if (!notes.length) return new Set();
+  const [low, high] = builtRange.split('-').map(Number);
+  const lo = Math.min(...notes), hi = Math.max(...notes);
+  if (lo >= low && hi <= high) return new Set(notes);
+  const up = Math.ceil((low - lo) / 12), down = Math.floor((high - hi) / 12);
+  if (up <= down) return new Set(notes.map(n => n + 12 * (up > 0 ? up : down)));
+  return new Set(notes.map(n => {
+    while (n < low) n += 12;
+    while (n > high) n -= 12;
+    return n;
+  }));
+}
+
 function renderPiano() {
   const chord = state.chord;
   const success = state.celebrating;
   const hints = hintNotes();
   const heldKey = [...state.held].sort((a, b) => a - b).join(',');
   const judging = chord && !success && !state.awaitRelease && heldKey === state.judgedKey && !PlayAlong.active();
+  const shown = shownNotes([...state.held]);
 
   for (const [n, el] of keyEls) {
-    const down = state.held.has(n);
+    const down = shown.has(n);
     el.classList.toggle('down', down);
     el.classList.toggle('hint', hints.has(n));
     el.classList.toggle('good', down && success);
@@ -1155,6 +1209,14 @@ function buildSettings() {
     saveSettings();
     renderPrompt();
   });
+
+  const fingering = $('opt-fingering');
+  fingering.checked = state.settings.fingering;
+  fingering.addEventListener('change', () => {
+    state.settings.fingering = fingering.checked;
+    saveSettings();
+    renderPrompt();
+  });
 }
 
 function checkbox(text, checked, onChange, id) {
@@ -1235,6 +1297,7 @@ PlayAlong.init({
     state.clicked.clear();
   },
   renderPiano,
+  notesLabel,
   modeChanged: mode => {
     document.querySelectorAll('.play-only').forEach(n => { n.hidden = mode !== 'play'; });
     if (mode === 'drill') { state.held.clear(); state.clicked.clear(); evaluate(); }

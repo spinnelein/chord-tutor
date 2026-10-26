@@ -47,6 +47,7 @@ const PlayAlong = (() => {
     customProgs: [],
     playMode: 'wait', tempo: 70, beats: 4, click: true, loop: true,
     showNotes: true,
+    fingering: false,          // right-hand fingering with the note names
     smoothFor: {},             // progression id -> voice chords as the nearest inversion to the last one
     oneMinuteBest: {},
   };
@@ -543,7 +544,8 @@ const PlayAlong = (() => {
     }
     $('now-name').textContent = now ? now.symbol : '—';
     const inv = now ? inversionName(now, nowNotes) : '';
-    $('now-notes').textContent = now && settings.showNotes ? nowNotes.map(n => n.name).join(' – ') + (inv ? ` (${inv})` : '') : '';
+    $('now-notes').replaceChildren(...(now && settings.showNotes
+      ? [app.notesLabel(nowNotes, settings.fingering), inv ? ` (${inv})` : ''] : []));
     renderStaff($('now-staff'), nowNotes, 200);
     $('next-name').textContent = next ? next.symbol : '—';
     renderStaff($('next-staff'), nextNotes, 150);
@@ -685,7 +687,7 @@ const PlayAlong = (() => {
     $('tempo').addEventListener('input', e => { settings.tempo = Number(e.target.value); $('tempo-val').textContent = e.target.value; save(); });
     $('beats').value = settings.beats;
     $('beats').addEventListener('change', e => { settings.beats = Number(e.target.value); save(); });
-    for (const id of ['click', 'loop']) {
+    for (const id of ['click', 'loop', 'fingering']) {
       $(id).checked = settings[id];
       $(id).addEventListener('change', e => { settings[id] = e.target.checked; save(); render(); });
     }
