@@ -555,7 +555,7 @@ const PlayAlong = (() => {
       if (ev) document.querySelector(`.bar[data-bar="${ev.bar}"]`)?.classList.add('current');
     } else renderBeatDots(0);
     const btn = $('play-notes');
-    btn.textContent = `Notes: ${settings.showNotes ? 'on' : 'off'} (Enter)`;
+    btn.textContent = `Notes: ${app.notesState(settings)} (Enter)`;
     btn.setAttribute('aria-pressed', settings.showNotes);
     app.renderPiano();
   }
@@ -638,8 +638,10 @@ const PlayAlong = (() => {
     app.modeChanged(mode);
   }
 
+  // Notes off → on → on with right-hand fingering → off.
   function toggleNotes() {
-    settings.showNotes = !settings.showNotes;
+    if (settings.showNotes && !settings.fingering) settings.fingering = true;
+    else [settings.showNotes, settings.fingering] = [!settings.showNotes, false];
     save();
     render();
   }
@@ -687,14 +689,13 @@ const PlayAlong = (() => {
     $('tempo').addEventListener('input', e => { settings.tempo = Number(e.target.value); $('tempo-val').textContent = e.target.value; save(); });
     $('beats').value = settings.beats;
     $('beats').addEventListener('change', e => { settings.beats = Number(e.target.value); save(); });
-    for (const id of ['click', 'loop', 'fingering']) {
+    for (const id of ['click', 'loop']) {
       $(id).checked = settings[id];
       $(id).addEventListener('change', e => { settings[id] = e.target.checked; save(); render(); });
     }
     $('play-smooth').addEventListener('change', e => { settings.smoothFor[current().id] = e.target.checked; save(); render(); });
     $('play-start').addEventListener('click', e => { play ? stop() : start(); e.currentTarget.blur(); });
-    $('play-notes').addEventListener('click', e => { toggleNotes(); e.currentTarget.blur(); });
-    $('omc-start').addEventListener('click', () => {
+    $('play-notes').addEventListener('click', e => { toggleNotes(); e.currentTarget.blur(); });    $('omc-start').addEventListener('click', () => {
       const a = Theory.parseChord($('omc-a').value), b = Theory.parseChord($('omc-b').value);
       if (!a || !b || a.key === b.key) { setFeedback('Enter two different chord names, like C and G', 'bad'); return; }
       startOneMinute(a, b);

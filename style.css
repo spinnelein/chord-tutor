@@ -84,7 +84,7 @@ button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent);
 .feedback { min-height: 1.6em; margin-top: 8px; font-size: 18px; font-weight: 600; }
 .feedback.good { color: var(--good); }
 .feedback.bad { color: var(--bad); }
-.actions { display: flex; justify-content: center; gap: 10px; margin-top: 12px; }
+.actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 12px; }
 
 .piano-wrap { margin: 16px 0; }
 .piano {
@@ -342,6 +342,7 @@ kbd {
 
 /* Phones: shorter keys to go with the narrower keyboard range. */
 @media (max-width: 600px) {
+  .play-stage { flex-wrap: wrap; gap: 16px 24px; } /* "Next" goes under "Now" */
   .piano, .key.white { height: 120px; }
   .key.black { height: 75px; }
 }

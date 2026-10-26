@@ -107,6 +107,9 @@ function rhFingering(midis) {
   return n === 5 ? [1, 2, 3, 4, 5] : [];
 }
 
+// What the Notes button says: off, on, or on with fingering.
+const notesState = s => !s.showNotes ? 'off' : s.fingering ? 'on + fingers' : 'on';
+
 // Note names for a voicing ({ midi, name } objects), each followed by its right-hand finger.
 function notesLabel(notes, fingering) {
   const span = document.createElement('span');
@@ -383,8 +386,11 @@ function skip() {
   nextChord();
 }
 
+// Notes off → on → on with right-hand fingering → off.
 function toggleNotes() {
-  state.settings.showNotes = !state.settings.showNotes;
+  const s = state.settings;
+  if (s.showNotes && !s.fingering) s.fingering = true;
+  else [s.showNotes, s.fingering] = [!s.showNotes, false];
   if (state.settings.showNotes) state.hintShown = true;
   saveSettings();
   renderPrompt();
@@ -429,7 +435,7 @@ function renderPrompt() {
   const btn = $('btn-names');
   btn.textContent = 'Names: ' + NAME_STYLES.find(s => s.id === style).label;
   const notesBtn = $('btn-hint');
-  notesBtn.textContent = `Notes: ${state.settings.showNotes ? 'on' : 'off'} (Enter)`;
+  notesBtn.textContent = `Notes: ${notesState(state.settings)} (Enter)`;
   notesBtn.setAttribute('aria-pressed', state.settings.showNotes);
 
   const c = state.chord;
@@ -1209,14 +1215,6 @@ function buildSettings() {
     saveSettings();
     renderPrompt();
   });
-
-  const fingering = $('opt-fingering');
-  fingering.checked = state.settings.fingering;
-  fingering.addEventListener('change', () => {
-    state.settings.fingering = fingering.checked;
-    saveSettings();
-    renderPrompt();
-  });
 }
 
 function checkbox(text, checked, onChange, id) {
@@ -1298,6 +1296,7 @@ PlayAlong.init({
   },
   renderPiano,
   notesLabel,
+  notesState,
   modeChanged: mode => {
     document.querySelectorAll('.play-only').forEach(n => { n.hidden = mode !== 'play'; });
     if (mode === 'drill') { state.held.clear(); state.clicked.clear(); evaluate(); }
