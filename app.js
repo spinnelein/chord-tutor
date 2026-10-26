@@ -147,7 +147,8 @@ const state = {
   chord: null,
   hintShown: false,     // notes were visible at some point for this chord (it won't count for streaks)
   awaitRelease: false, // after a success, wait for all keys up before judging the next chord
-  celebrating: false,  // brief green flash between a correct answer and the next chord
+  celebrating: false,  // "Correct!" is up: the next chord comes once the chord is let go
+  celebrateReady: false, // ...and the pop-up has been up long enough to see
   wrongSince: null,    // when the current wrong chord (right number of notes, wrong ones) started
   wrongMs: -1,         // longest unbroken wrong chord this attempt; -1 = none
   judgedKey: null,     // the held notes (as a key) currently shown as wrong, once they've lasted
@@ -194,6 +195,8 @@ function saveSettings() {
 
 function nextChord() {
   const { settings } = state;
+  state.celebrating = false;
+  hideCorrect();
   const options = [];
   for (const root of ROOTS.filter(r => settings.roots.includes(r.pc))) {
     for (const type of CHORD_TYPES.filter(t => settings.types.includes(t.id))) {
@@ -234,7 +237,6 @@ function nextChord() {
   state.clicked.clear();
 
   state.chord = chord;
-  state.celebrating = false;
   cancelNotQuite();
   state.hintShown = state.settings.showNotes;
   resetAttempt();
@@ -252,7 +254,8 @@ function nextChord() {
 function evaluate() {
   if (PlayAlong.active()) return PlayAlong.evaluate();
   const chord = state.chord;
-  if (!chord || state.celebrating) return;
+  if (!chord) return;
+  if (state.celebrating) return advanceIfReleased();
 
   if (state.awaitRelease) {
     if (state.held.size === 0) {
@@ -366,21 +369,54 @@ function resetAttempt() {
   state.wrongMs = -1;
 }
 
+// After a correct chord: a "Correct!" pop-up, then the next chord once the chord has been let go
+// (and the pop-up has been up for a moment). Notes clicked on screen don't need letting go.
+const CELEBRATE_MS = 700;
+const LET_GO_HINT_MS = 1500;
+let celebrateTimers = [];
+
+const stillHolding = () => [...state.held].some(n => !state.clicked.has(n));
+
 function succeed() {
   const secs = (performance.now() - state.shownAt) / 1000;
   Progress.record(state.chord, { ok: true, time: secs, hint: state.hintShown });
   renderProgress();
-  const timeText = secs > 30 ? "(time not counted — you'd been away a while)" : `${secs.toFixed(1)}s`;
-  setFeedback(`Correct${state.hintShown ? ' (with hint) —' : '!'} ${timeText}`, 'good');
+  const timeText = secs > 30 ? "time not counted — you'd been away a while" : `${secs.toFixed(1)}s`;
+  setFeedback('');
+  showCorrect(state.hintShown ? `with hint · ${timeText}` : timeText);
   state.celebrating = true;
+  state.celebrateReady = false;
   resetAttempt();
   $('chord-name').classList.add('good');
   renderPrompt(); // reveals the name when names are hidden
-  setTimeout(nextChord, 700);
+  celebrateTimers = [
+    setTimeout(() => { state.celebrateReady = true; advanceIfReleased(); }, CELEBRATE_MS),
+    setTimeout(() => { $('correct-letgo').hidden = false; }, LET_GO_HINT_MS),
+  ];
+}
+
+function advanceIfReleased() {
+  if (state.celebrating && state.celebrateReady && !stillHolding()) nextChord();
+}
+
+function showCorrect(detail) {
+  $('correct-detail').textContent = detail;
+  $('correct-letgo').hidden = true;
+  const pop = $('correct-pop');
+  pop.classList.remove('show');
+  void pop.offsetWidth; // restart the animation
+  pop.classList.add('show');
+}
+
+function hideCorrect() {
+  celebrateTimers.forEach(clearTimeout);
+  celebrateTimers = [];
+  $('correct-pop').classList.remove('show');
 }
 
 function skip() {
-  if (!state.chord || state.celebrating) return;
+  if (state.celebrating) return nextChord(); // Space moves on without letting go
+  if (!state.chord) return;
   Progress.record(state.chord, { ok: false, skip: true });
   renderProgress();
   nextChord();

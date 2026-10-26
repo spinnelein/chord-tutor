@@ -33,7 +33,12 @@
         <span id="session-timer" class="session-timer"></span>
       </div>
       <div class="prompt-row">
-        <div>
+        <div class="name-wrap">
+          <div id="correct-pop" class="correct-pop" role="status" aria-live="polite">
+            <div class="correct-title">✓ Correct!</div>
+            <div id="correct-detail" class="correct-detail"></div>
+            <div id="correct-letgo" class="correct-letgo" hidden>Let go for the next chord</div>
+          </div>
           <div id="chord-name" class="chord-name">—</div>
           <div id="chord-inv" class="chord-inv"></div>
           <div id="chord-badge" class="badge" hidden>New chord</div>
