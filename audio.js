@@ -28,6 +28,9 @@ const MicInput = (() => {
   const settings = { gateDb: -70, rangeDb: 30, noiseProfile: null };
   const NOISE_MARGIN = 8; // dB a note must rise above the room's noise at its pitch
   const BURIED_RATIO = 3; // a note buried in the noise can explain overtones up to 3x its own level
+  const FAINT_CENTS = 25;  // a barely heard low note: a peak this close to its pitch...
+  const FAINT_PROMINENCE = Math.pow(10, 12 / 20); // ...standing 12 dB above the spectrum around it
+  const FAINT_BELOW_FLOOR = Math.pow(10, -20 / 20); // ...and no more than 20 dB under the quiet-note floor
 
   let ctx = null, stream = null, analyser = null, timer = null;
   let spectrumDb = null, timeData = null;
@@ -72,6 +75,23 @@ const MicInput = (() => {
     const near = (f, target, cents) => Math.abs(1200 * Math.log2(f / target)) < cents;
     const hasPeakNear = (f, cents) => peaks.some(p => near(p.freq, f, cents));
 
+    // Is there a peak at f, however quiet, standing well clear of the spectrum around it? Steady
+    // background noise is broad; a reed is a sharp line even when the mic barely picks it up.
+    const bin = f => Math.round(f / binHz);
+    function faintPeakAt(f) {
+      let k = bin(f * Math.pow(2, -FAINT_CENTS / 1200)), best = -1;
+      for (const end = bin(f * Math.pow(2, FAINT_CENTS / 1200)); k <= end; k++) {
+        if (mag[k] > mag[k - 1] && mag[k] >= mag[k + 1] && (best < 0 || mag[k] > mag[best])) best = k;
+      }
+      if (best < 0 || mag[best] < floor * FAINT_BELOW_FLOOR) return false;
+      const around = [];
+      for (let j = bin(f * Math.pow(2, -3 / 12)); j <= bin(f * Math.pow(2, 3 / 12)); j++) {
+        if (Math.abs(1200 * Math.log2(j * binHz / f)) > 60) around.push(mag[j]);
+      }
+      around.sort((a, b) => a - b);
+      return mag[best] >= around[around.length >> 1] * FAINT_PROMINENCE;
+    }
+
     const found = [];
     // Low notes buried in room noise (a guitar's low G sits right on 100 Hz mains hum) can't count
     // as notes, but their overtones are still there and mustn't be mistaken for notes either.
@@ -111,9 +131,19 @@ const MicInput = (() => {
       const supported = peak.freq * 2 > MAX_HZ || peak.amp >= max * LOUD_ALONE || hasOvertones;
       if (!supported) continue;
 
-      const existing = found.find(n => n.midi === midi);
-      if (!existing) found.push({ midi, freq: peak.freq, amp: peak.amp });
-      else if (peak.amp > existing.amp) Object.assign(existing, { freq: peak.freq, amp: peak.amp });
+      // A low note the mic barely hears (a phone's mic and an accordion's low reed) comes through
+      // as its 2nd overtone, an octave too high, and its 3rd and 5th overtones then look like extra
+      // notes a 5th and a 10th above that. When there's a faint but distinct peak an octave down and
+      // its 3rd and 5th overtones are both there, the note is the low one, which also explains them.
+      const low = peak.freq / 2;
+      const note = low >= MIN_HZ && hasPeakNear(low * 3, HARMONIC_TOLERANCE) &&
+        hasPeakNear(low * 5, HARMONIC_TOLERANCE) && faintPeakAt(low)
+        ? { midi: midi - 12, freq: low, amp: peak.amp }
+        : { midi, freq: peak.freq, amp: peak.amp };
+
+      const existing = found.find(n => n.midi === note.midi);
+      if (!existing) found.push(note);
+      else if (note.amp > existing.amp) Object.assign(existing, note);
     }
 
     const audible = peaks.filter(x => !x.quiet);
