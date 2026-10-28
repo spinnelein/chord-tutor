@@ -161,7 +161,7 @@ const state = {
     invMode: 'any',        // 'any' or 'specific'
     inversions: [0, 1, 2], // which inversions to ask for in 'specific' mode
     showNotes: false,
-    showStaff: false,
+    showStaff: true,
     nameStyle: 'abbr',
     input: 'mic',          // 'mic', 'midi:all' or 'midi:<device id>'
     slash: false,          // show inversions as slash chords, e.g. Fm/A♭
