@@ -20,7 +20,8 @@ const Theory = (() => {
   const R = [0, 0], M2 = [2, 1], m3 = [3, 2], M3 = [4, 2], P4 = [5, 3], d5 = [6, 4], P5 = [7, 4],
     A5 = [8, 4], M6 = [9, 5], d7 = [9, 6], m7 = [10, 6], M7 = [11, 6], M9 = [14, 8];
 
-  // `optional`: tones a guitarist may leave out (the 5th, once a chord has 4 or more notes).
+  // `optional`: tones a player may leave out (the 5th, once a chord has 4 or more notes). An
+  // accordion's Stradella dim7 button sounds only the root, 3rd and 7th (C°7 = C-E♭-A).
   const CHORD_TYPES = [
     { id: 'maj',  sym: '',      name: 'major',            tones: [R, M3, P5] },
     { id: 'min',  sym: 'm',     name: 'minor',            tones: [R, m3, P5] },
@@ -36,7 +37,7 @@ const Theory = (() => {
     { id: 'add9', sym: 'add9',  name: 'add 9',            tones: [R, M3, P5, M9], optional: [P5] },
     { id: 'nine', sym: '9',     name: 'dominant 9th',     tones: [R, M3, P5, m7, M9], optional: [P5] },
     { id: 'dim',  sym: 'dim',   name: 'diminished',       tones: [R, m3, d5] },
-    { id: 'dim7', sym: 'dim7',  name: 'diminished 7th',   tones: [R, m3, d5, d7] },
+    { id: 'dim7', sym: 'dim7',  name: 'diminished 7th',   tones: [R, m3, d5, d7], optional: [d5] },
     { id: 'hdim', sym: 'm7♭5',  name: 'half-diminished',  tones: [R, m3, d5, m7] },
     { id: 'aug',  sym: 'aug',   name: 'augmented',        tones: [R, M3, A5] },
   ];

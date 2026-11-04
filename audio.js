@@ -12,6 +12,7 @@ const MicInput = (() => {
   const FFT_SIZE = 16384;      // ~0.34s window at 48kHz: fine enough to split semitones near middle C
   const FRAME_MS = 40;
   const MIN_HZ = 75;           // lowest fundamental (F2, the accordion's 16' reed in its low range)
+  const LOWEST_BASS_HZ = 40;   // a low note heard only through its overtones can be down to E1
   const MAX_FUNDAMENTAL_HZ = 2200;
   const MAX_HZ = 6000;         // look this high for overtones
   const NOTE_TOLERANCE = 45;   // cents a peak may be off a semitone (musette reeds are detuned)
@@ -135,9 +136,15 @@ const MicInput = (() => {
       // as its 2nd overtone, an octave too high, and its 3rd and 5th overtones then look like extra
       // notes a 5th and a 10th above that. When there's a faint but distinct peak an octave down and
       // its 3rd and 5th overtones are both there, the note is the low one, which also explains them.
+      // The bass side's reeds go below the lowest pitch we look at (a Stradella C is C2, 65 Hz) and
+      // the mic may not hear the note itself at all; its 3rd, 5th and 7th overtones together are
+      // evidence enough, as long as the 5th and 7th aren't just the octaves of notes being played
+      // (a close C7, C4-E4-G4-B♭4, has peaks at 3, 5 and 7 times C3 too).
       const low = peak.freq / 2;
-      const note = low >= MIN_HZ && hasPeakNear(low * 3, HARMONIC_TOLERANCE) &&
-        hasPeakNear(low * 5, HARMONIC_TOLERANCE) && faintPeakAt(low)
+      const overtoneOnly = h => hasPeakNear(low * h, HARMONIC_TOLERANCE) && !hasPeakNear(low * h / 2, HARMONIC_TOLERANCE);
+      const note = low >= LOWEST_BASS_HZ && hasPeakNear(low * 3, HARMONIC_TOLERANCE) &&
+        hasPeakNear(low * 5, HARMONIC_TOLERANCE) &&
+        ((low >= MIN_HZ && faintPeakAt(low)) || (overtoneOnly(5) && overtoneOnly(7)))
         ? { midi: midi - 12, freq: low, amp: peak.amp }
         : { midi, freq: peak.freq, amp: peak.amp };
 
