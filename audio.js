@@ -120,18 +120,6 @@ const MicInput = (() => {
         });
       if (isOvertone) continue;
 
-      // A real note has overtones; a lone peak is more likely noise. But a quiet note (a thin
-      // string, a soft reed) barely has audible overtones, so a peak that's loud in its own right
-      // counts too (brief noise is still filtered out by needing the note in several readings in a
-      // row). Very high notes may have their overtones above the range we look at, so they get a pass.
-      const hasOvertones = hasPeakNear(peak.freq * 2, HARMONIC_TOLERANCE) || hasPeakNear(peak.freq * 3, HARMONIC_TOLERANCE);
-      if (peak.quiet) {
-        if (hasOvertones) buried.push({ midi, freq: peak.freq, amp: peak.amp });
-        continue;
-      }
-      const supported = peak.freq * 2 > MAX_HZ || peak.amp >= max * LOUD_ALONE || hasOvertones;
-      if (!supported) continue;
-
       // A low note the mic barely hears (a phone's mic and an accordion's low reed) comes through
       // as its 2nd overtone, an octave too high, and its 3rd and 5th overtones then look like extra
       // notes a 5th and a 10th above that. When there's a faint but distinct peak an octave down and
@@ -139,12 +127,28 @@ const MicInput = (() => {
       // The bass side's reeds go below the lowest pitch we look at (a Stradella C is C2, 65 Hz) and
       // the mic may not hear the note itself at all; its 3rd, 5th and 7th overtones together are
       // evidence enough, as long as the 5th and 7th aren't just the octaves of notes being played
-      // (a close C7, C4-E4-G4-B♭4, has peaks at 3, 5 and 7 times C3 too).
+      // (a close C7, C4-E4-G4-B♭4, has peaks at 3, 5 and 7 times C3 too). Those overtones clear of
+      // the noise also vouch for the note when its own peak is lost in the room's low rumble.
       const low = peak.freq / 2;
-      const overtoneOnly = h => hasPeakNear(low * h, HARMONIC_TOLERANCE) && !hasPeakNear(low * h / 2, HARMONIC_TOLERANCE);
-      const note = low >= LOWEST_BASS_HZ && hasPeakNear(low * 3, HARMONIC_TOLERANCE) &&
-        hasPeakNear(low * 5, HARMONIC_TOLERANCE) &&
-        ((low >= MIN_HZ && faintPeakAt(low)) || (overtoneOnly(5) && overtoneOnly(7)))
+      const audibleNear = f => peaks.some(p => !p.quiet && near(p.freq, f, HARMONIC_TOLERANCE));
+      const overtoneOnly = h => audibleNear(low * h) && !hasPeakNear(low * h / 2, HARMONIC_TOLERANCE);
+      const lowHeard = low >= LOWEST_BASS_HZ && hasPeakNear(low * 3, HARMONIC_TOLERANCE) &&
+        hasPeakNear(low * 5, HARMONIC_TOLERANCE) && low >= MIN_HZ && faintPeakAt(low);
+      const lowFromOvertones = low >= LOWEST_BASS_HZ && audibleNear(low * 3) && overtoneOnly(5) && overtoneOnly(7);
+
+      // A real note has overtones; a lone peak is more likely noise. But a quiet note (a thin
+      // string, a soft reed) barely has audible overtones, so a peak that's loud in its own right
+      // counts too (brief noise is still filtered out by needing the note in several readings in a
+      // row). Very high notes may have their overtones above the range we look at, so they get a pass.
+      const hasOvertones = hasPeakNear(peak.freq * 2, HARMONIC_TOLERANCE) || hasPeakNear(peak.freq * 3, HARMONIC_TOLERANCE);
+      if (peak.quiet && !lowFromOvertones) {
+        if (hasOvertones) buried.push({ midi, freq: peak.freq, amp: peak.amp });
+        continue;
+      }
+      const supported = lowFromOvertones || peak.freq * 2 > MAX_HZ || peak.amp >= max * LOUD_ALONE || hasOvertones;
+      if (!supported) continue;
+
+      const note = lowHeard || lowFromOvertones
         ? { midi: midi - 12, freq: low, amp: peak.amp }
         : { midi, freq: peak.freq, amp: peak.amp };
 
@@ -240,12 +244,12 @@ const MicInput = (() => {
     lastNotes = '';
   }
 
-  // The room's noise from C2 up, in quarter-semitone bands: for each band, the loudest level in
-  // each recorded moment, then the 90th percentile over the moments. Bands narrower than a semitone
-  // matter: mains hum (60 Hz and its overtones) sits half a semitone below every B and F♯, and in
+  // The room's noise from the lowest bass note up, in quarter-semitone bands: for each band, the
+  // loudest level in each recorded moment, then the 90th percentile over the moments. Bands
+  // narrower than a semitone matter: mains hum (60 Hz and its overtones) sits half a semitone below every B and F♯, and in
   // semitone bands it would count against those notes.
   function noiseProfile(spectraDb, binHz) {
-    const lowMidi = 36, highMidi = Math.ceil(freqToMidi(MAX_HZ)), step = 4;
+    const lowMidi = Math.floor(freqToMidi(LOWEST_BASS_HZ)), highMidi = Math.ceil(freqToMidi(MAX_HZ)), step = 4;
     const levels = [];
     for (let b = lowMidi * step; b <= highMidi * step; b++) {
       const m = b / step;
