@@ -865,7 +865,8 @@ function drawMic(frame) {
   if (canvas.hidden) return;
   const g = canvas.getContext('2d');
   const W = canvas.width, H = canvas.height;
-  const LO = MicInput.MIN_HZ, HI = MicInput.MAX_HZ, TOP = -10, BOTTOM = -110;
+  // From the lowest bass note, below where the detector looks for notes, so low reeds show too.
+  const LO = MicInput.LOWEST_BASS_HZ, HI = MicInput.MAX_HZ, TOP = -10, BOTTOM = -110;
   const x = f => Math.log(f / LO) / Math.log(HI / LO) * W;
   const y = db => (TOP - db) / (TOP - BOTTOM) * H;
 

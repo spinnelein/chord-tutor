@@ -263,7 +263,7 @@ const MicInput = (() => {
   const isRunning = () => !!timer && ctx.state === 'running';
   const isWaitingForClick = () => !!timer && ctx.state === 'suspended';
 
-  return { start, stop, detectNotes, noiseProfile, thresholdDb, settings, isRunning, isWaitingForClick, MIN_HZ, MAX_HZ };
+  return { start, stop, detectNotes, noiseProfile, thresholdDb, settings, isRunning, isWaitingForClick, MIN_HZ, LOWEST_BASS_HZ, MAX_HZ };
 })();
 
 if (typeof module !== 'undefined') module.exports = MicInput;
